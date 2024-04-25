@@ -3,16 +3,68 @@ import mediapipe as mp
 import numpy as np
 import pyautogui
 import os
+import speech_recognition as sr
+import threading
 
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.7, min_tracking_confidence=0.5)
 
+global_volume_control_active = False
+global_app_control_active =False
+exit_program = False
+
+def activate_function(command):
+    global global_volume_control_active, global_app_control_active, exit_program
+    if "volume control" in command:
+        print("Volume control activated")
+        global_volume_control_active = True
+    elif "deactivate volume control" in command:
+        print("Volume control deactivated")
+        global_volume_control_active = False
+    elif "app control" in command and not global_volume_control_active:
+        print("App control activated")
+        global_app_control_active = True
+    elif "deactivate app control" in command:
+        print("App control deactivated")
+        global_app_control_active = False
+    elif "exit" in command:
+        print("Exiting program...")
+        exit_program = True
+    else:
+        print("Command not recognized")
+
+def voice_recognition():
+    recognizer = sr.Recognizer()
+    while not exit_program:
+        with sr.Microphone() as source:
+            print("Say a command...")
+            recognizer.adjust_for_ambient_noise(source)
+            audio = recognizer.listen(source)
+
+            try:
+                command = recognizer.recognize_google(audio).lower()
+                print("You said:", command)
+                activate_function(command)
+            except sr.UnknownValueError:
+                print("Could not understand audio")
+            except sr.RequestError as e:
+                print("Could not request results; {0}".format(e))
+
 def volume_control():
+    global global_volume_control_active
     cap = cv2.VideoCapture(0)
+
+    if not cap.isOpened():
+        print("Error: Unable to open camera.")
+        return
+
     prev_distance = 50
     volume_step = 2
 
-    while cap.isOpened():
+    while not exit_program:
+        if not global_volume_control_active:
+            break
+
         ret, frame = cap.read()
         if not ret:
             break
@@ -52,52 +104,60 @@ def volume_control():
     cv2.destroyAllWindows()
 
 def finger_analysis():
+    global global_app_control_active
     cap = cv2.VideoCapture(0)
 
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
+    if not cap.isOpened():
+        print("Error: Unable to open camera.")
+        return
 
-        frame = cv2.flip(frame, 1)
-        height, width, _ = frame.shape
+    while not exit_program:
+        if global_app_control_active:
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame = cv2.flip(frame, 1)
+            height, width, _ = frame.shape
 
-        results = hands.process(rgb_frame)
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        if results.multi_hand_landmarks:
-            for hand_landmarks in results.multi_hand_landmarks:
-                thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
-                index_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
-                middle_tip = hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_TIP]
-                ring_tip = hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_TIP]
-                pinky_tip = hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_TIP]
+            results = hands.process(rgb_frame)
 
-                fingers_up = 0
-                if index_tip.y < thumb_tip.y:
-                    fingers_up += 1
-                if middle_tip.y < thumb_tip.y:
-                    fingers_up += 1
-                if ring_tip.y < thumb_tip.y:
-                    fingers_up += 1
-                if pinky_tip.y < thumb_tip.y:
-                    fingers_up += 1
+            if results.multi_hand_landmarks:
+                for hand_landmarks in results.multi_hand_landmarks:
+                    thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
+                    index_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+                    middle_tip = hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_TIP]
+                    ring_tip = hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_TIP]
+                    pinky_tip = hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_TIP]
 
-                if fingers_up == 3:
-                    os.system("start chrome")
-                elif fingers_up == 4:
-                    os.system("TASKKILL /F /IM chrome.exe")
+                    fingers_up = 0
+                    if index_tip.y < thumb_tip.y:
+                        fingers_up += 1
+                    if middle_tip.y < thumb_tip.y:
+                        fingers_up += 1
+                    if ring_tip.y < thumb_tip.y:
+                        fingers_up += 1
+                    if pinky_tip.y < thumb_tip.y:
+                        fingers_up += 1
 
-        cv2.imshow('Finger Analysis', frame)
+                    if fingers_up == 3:
+                        os.system("start chrome")
+                    elif fingers_up == 4:
+                        os.system("TASKKILL /F /IM chrome.exe")
 
-        if cv2.waitKey(1) & 0xFF == 27:
-            break
+            cv2.imshow('Finger Analysis', frame)
+
+            if cv2.waitKey(1) & 0xFF == 27:
+                break
 
     cap.release()
     cv2.destroyAllWindows()
 
-volume_control()
-finger_analysis()
+if __name__ == "__main__":
+    voice_thread = threading.Thread(target=voice_recognition)
+    voice_thread.start()
 
-
+    volume_control()
+    finger_analysis()
