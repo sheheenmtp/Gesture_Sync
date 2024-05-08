@@ -47,7 +47,7 @@ def voice_recognition():
             except sr.RequestError as e:
                 print("Could not request results; {0}".format(e))
 def volume_control():
-    global volume_control_active, volume_control_deactive
+    global volume_control_active, exit_program
     cap = cv2.VideoCapture(0)
     prev_distance = 50
     volume_step = 2
@@ -98,7 +98,7 @@ def volume_control():
     cv2.destroyAllWindows()
 
 def finger_analysis():
-    global app_control_active, app_control_deactive
+    global app_control_active, exit_program
     cap = cv2.VideoCapture(0)
 
     while not exit_program:
